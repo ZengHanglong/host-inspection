@@ -1,0 +1,28 @@
+# Backend Dependencies for Production Inspection System
+
+# Core
+fastapi>=0.100.0
+uvicorn>=0.23.0
+sqlalchemy>=2.0.0
+apscheduler>=3.10.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+
+# PostgreSQL
+psycopg2-binary>=2.9.0
+
+# VMware vCenter SDK
+pyvmomi>=7.0.3
+
+# Encryption
+pycryptodome>=3.19.0
+
+# HTTP requests for other APIs
+requests>=2.31.0
+httpx>=0.25.0
+
+# Date/time handling
+python-dateutil>=2.8.0
+
+# Report generation
+python-docx>=0.8.11
