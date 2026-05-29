@@ -52,6 +52,12 @@
             <input class="form-input" type="number" v-model="form.api_port" placeholder="端口" />
             <input class="form-input" v-model="form.api_username" placeholder="用户名" />
             <input class="form-input" type="password" v-model="form.api_password" placeholder="密码" />
+            <div class="form-divider" v-if="inst.platform === 'vmware'">
+              <span class="divider-text">ESXi SSH</span>
+            </div>
+            <input class="form-input" v-if="inst.platform === 'vmware'" v-model="form.esxi_ssh_username" placeholder="ESXi SSH 用户名 (root)" />
+            <input class="form-input" v-if="inst.platform === 'vmware'" type="password" v-model="form.esxi_ssh_password" placeholder="ESXi SSH 密码" />
+            <input class="form-input" v-if="inst.platform === 'vmware'" type="number" v-model="form.esxi_ssh_port" placeholder="SSH 端口 (22)" />
             <div class="form-actions">
               <button class="btn-save" @click="saveInstance(inst)" :disabled="saving">保存</button>
               <button class="btn-cancel" @click="editingId = null">取消</button>
@@ -121,6 +127,22 @@
             <label>密码</label>
             <input class="form-input" type="password" v-model="addForm.api_password" placeholder="密码" />
           </div>
+          <!-- ESXi SSH 配置 (仅 VMware) -->
+          <div class="form-divider" v-if="addForm.platform_code === 'vmware'">
+            <span class="divider-text">ESXi SSH 配置</span>
+          </div>
+          <div class="form-group" v-if="addForm.platform_code === 'vmware'">
+            <label>ESXi SSH 用户名</label>
+            <input class="form-input" v-model="addForm.esxi_ssh_username" placeholder="root" />
+          </div>
+          <div class="form-group" v-if="addForm.platform_code === 'vmware'">
+            <label>ESXi SSH 密码</label>
+            <input class="form-input" type="password" v-model="addForm.esxi_ssh_password" placeholder="ESXi root密码" />
+          </div>
+          <div class="form-group" v-if="addForm.platform_code === 'vmware'">
+            <label>SSH 端口</label>
+            <input class="form-input" type="number" v-model="addForm.esxi_ssh_port" placeholder="22" />
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn-cancel" @click="showAdd = false">取消</button>
@@ -143,8 +165,8 @@ const showAdd = ref(false)
 const addCategoryName = ref('')
 const addPlatforms = ref([])
 
-const form = ref({ api_url: '', api_port: 443, api_username: '', api_password: '' })
-const addForm = ref({ platform_code: '', instance_name: '', environment: 'ser', api_url: '', api_port: 443, api_username: '', api_password: '' })
+const form = ref({ api_url: '', api_port: 443, api_username: '', api_password: '', esxi_ssh_username: '', esxi_ssh_password: '', esxi_ssh_port: 22 })
+const addForm = ref({ platform_code: '', instance_name: '', environment: 'ser', api_url: '', api_port: 443, api_username: '', api_password: '', esxi_ssh_username: '', esxi_ssh_password: '', esxi_ssh_port: 22 })
 
 const categories = [
   { key: 'virtualization', name: '虚拟化', platforms: ['vmware', 'smartx'] },
@@ -177,7 +199,15 @@ const loadCredentials = async () => {
 
 const startEdit = (inst) => {
   editingId.value = inst.id
-  form.value = { api_url: inst.api_url || '', api_port: inst.api_port || 443, api_username: inst.api_username || '', api_password: '' }
+  form.value = {
+    api_url: inst.api_url || '',
+    api_port: inst.api_port || 443,
+    api_username: inst.api_username || '',
+    api_password: '',
+    esxi_ssh_username: inst.esxi_ssh_username || '',
+    esxi_ssh_password: '',
+    esxi_ssh_port: inst.esxi_ssh_port || 22,
+  }
 }
 
 const saveInstance = async (inst) => {
@@ -312,5 +342,8 @@ onMounted(loadCredentials)
 .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group label { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.3px; }
+.form-divider { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px 0; }
+.form-divider::before, .form-divider::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.1); }
+.divider-text { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid #362d59; }
 </style>

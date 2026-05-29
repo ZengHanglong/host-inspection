@@ -102,6 +102,11 @@ class PlatformInstance(Base):
     api_token = Column(String(500))
     api_type = Column(String(20))
 
+    # ESXi SSH credentials (for direct ESXi log collection)
+    esxi_ssh_username = Column(String(100))
+    esxi_ssh_password = Column(String(500))  # encrypted
+    esxi_ssh_port = Column(Integer, default=22)
+
     # SSL
     requires_ssl = Column(Boolean, default=True)
     ssl_verify = Column(Boolean, default=True)

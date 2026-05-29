@@ -405,6 +405,15 @@ def _collect_vmware_snapshot(instance: PlatformInstance, thresholds: Dict[str, D
 
         # Collect ESXi host logs via SSH (direct connection to each ESXi host)
         esxi_logs = []
+        esxi_user = instance.esxi_ssh_username or "root"
+        esxi_pass = instance.esxi_ssh_password or ""
+        esxi_port = instance.esxi_ssh_port or 22
+        if esxi_pass:
+            from app.utils.encryption import decrypt_password
+            esxi_pass = decrypt_password(esxi_pass)
+        else:
+            esxi_pass = password  # fallback to vCenter password
+
         for host in hosts:
             host_ip = host.get("ip_address", "")
             if not host_ip:
@@ -413,9 +422,9 @@ def _collect_vmware_snapshot(instance: PlatformInstance, thresholds: Dict[str, D
                 from app.services.esxi_log_collector import collect_esxi_logs_via_ssh
                 host_logs = collect_esxi_logs_via_ssh(
                     host_ip=host_ip,
-                    username=instance.api_username or "root",
-                    password=password,
-                    port=22,
+                    username=esxi_user,
+                    password=esxi_pass,
+                    port=esxi_port,
                     hours=24,
                     max_lines_per_file=100,
                 )

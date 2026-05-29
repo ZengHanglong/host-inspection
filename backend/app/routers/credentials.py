@@ -22,6 +22,9 @@ class CredentialConfig(BaseModel):
     api_password: Optional[str] = None
     api_key: Optional[str] = None
     ssl_verify: Optional[bool] = True
+    esxi_ssh_username: Optional[str] = None
+    esxi_ssh_password: Optional[str] = None
+    esxi_ssh_port: Optional[int] = 22
 
 
 class InstanceCreate(BaseModel):
@@ -33,6 +36,9 @@ class InstanceCreate(BaseModel):
     api_username: Optional[str] = None
     api_password: Optional[str] = None
     ssl_verify: Optional[bool] = True
+    esxi_ssh_username: Optional[str] = None
+    esxi_ssh_password: Optional[str] = None
+    esxi_ssh_port: Optional[int] = 22
 
 
 @router.get("/list")
@@ -60,6 +66,8 @@ async def get_credentials_list():
                     "last_error": i.last_error or "",
                     "last_test_at": i.last_test_at.isoformat() if i.last_test_at else None,
                     "last_used": i.last_sync_at.isoformat() if i.last_sync_at else None,
+                    "esxi_ssh_username": i.esxi_ssh_username or "",
+                    "esxi_ssh_port": i.esxi_ssh_port or 22,
                 }
                 for i in instances
             ],
@@ -112,6 +120,12 @@ async def update_credential(platform: str, config: CredentialConfig):
             instance.api_password = encrypt_password(config.api_password)
         if config.api_key:
             instance.api_key = config.api_key
+        if getattr(config, 'esxi_ssh_username', None) is not None:
+            instance.esxi_ssh_username = config.esxi_ssh_username
+        if getattr(config, 'esxi_ssh_password', None):
+            instance.esxi_ssh_password = encrypt_password(config.esxi_ssh_password)
+        if getattr(config, 'esxi_ssh_port', None):
+            instance.esxi_ssh_port = config.esxi_ssh_port
 
         instance.is_configured = bool(instance.api_url and instance.api_username and instance.api_password)
         instance.updated_at = datetime.now()
@@ -354,6 +368,12 @@ async def update_instance(instance_id: int, config: CredentialConfig):
             instance.api_password = encrypt_password(config.api_password)
         if config.api_key:
             instance.api_key = config.api_key
+        if getattr(config, 'esxi_ssh_username', None) is not None:
+            instance.esxi_ssh_username = config.esxi_ssh_username
+        if getattr(config, 'esxi_ssh_password', None):
+            instance.esxi_ssh_password = encrypt_password(config.esxi_ssh_password)
+        if getattr(config, 'esxi_ssh_port', None):
+            instance.esxi_ssh_port = config.esxi_ssh_port
 
         instance.is_configured = bool(instance.api_url and instance.api_username and instance.api_password)
         instance.updated_at = datetime.now()
