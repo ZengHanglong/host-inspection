@@ -189,8 +189,7 @@ async def _test_vmware_connection(instance: PlatformInstance) -> dict:
 
     ssl_context = None
     if not instance.ssl_verify:
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-        ssl_context.verify_mode = ssl.CERT_NONE
+        ssl_context = ssl._create_unverified_context()
 
     try:
         si = SmartConnect(host=instance.api_url, port=instance.api_port or 443, user=instance.api_username, pwd=password, sslContext=ssl_context)

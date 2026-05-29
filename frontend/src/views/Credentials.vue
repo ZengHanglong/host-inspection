@@ -52,6 +52,10 @@
             <input class="form-input" type="number" v-model="form.api_port" placeholder="端口" />
             <input class="form-input" v-model="form.api_username" placeholder="用户名" />
             <input class="form-input" type="password" v-model="form.api_password" placeholder="密码" />
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="form.ssl_verify" />
+              <span>验证 SSL 证书</span>
+            </label>
             <div class="form-divider" v-if="inst.platform === 'vmware'">
               <span class="divider-text">ESXi SSH</span>
             </div>
@@ -127,6 +131,13 @@
             <label>密码</label>
             <input class="form-input" type="password" v-model="addForm.api_password" placeholder="密码" />
           </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="addForm.ssl_verify" />
+              <span>验证 SSL 证书</span>
+            </label>
+            <p class="form-hint">内网环境建议关闭</p>
+          </div>
           <!-- ESXi SSH 配置 (仅 VMware) -->
           <div class="form-divider" v-if="addForm.platform_code === 'vmware'">
             <span class="divider-text">ESXi SSH 配置</span>
@@ -166,7 +177,7 @@ const addCategoryName = ref('')
 const addPlatforms = ref([])
 
 const form = ref({ api_url: '', api_port: 443, api_username: '', api_password: '', esxi_ssh_username: '', esxi_ssh_password: '', esxi_ssh_port: 22 })
-const addForm = ref({ platform_code: '', instance_name: '', environment: 'ser', api_url: '', api_port: 443, api_username: '', api_password: '', esxi_ssh_username: '', esxi_ssh_password: '', esxi_ssh_port: 22 })
+const addForm = ref({ platform_code: '', instance_name: '', environment: 'ser', api_url: '', api_port: 443, api_username: '', api_password: '', ssl_verify: false, esxi_ssh_username: '', esxi_ssh_password: '', esxi_ssh_port: 22 })
 
 const categories = [
   { key: 'virtualization', name: '虚拟化', platforms: ['vmware', 'smartx'] },
@@ -204,6 +215,7 @@ const startEdit = (inst) => {
     api_port: inst.api_port || 443,
     api_username: inst.api_username || '',
     api_password: '',
+    ssl_verify: inst.ssl_verify !== false,
     esxi_ssh_username: inst.esxi_ssh_username || '',
     esxi_ssh_password: '',
     esxi_ssh_port: inst.esxi_ssh_port || 22,
@@ -345,5 +357,8 @@ onMounted(loadCredentials)
 .form-divider { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px 0; }
 .form-divider::before, .form-divider::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.1); }
 .divider-text { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+.checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(255,255,255,0.7); cursor: pointer; }
+.checkbox-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: #6a5fc1; cursor: pointer; }
+.form-hint { font-size: 11px; color: rgba(255,255,255,0.35); margin: 4px 0 0 0; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid #362d59; }
 </style>

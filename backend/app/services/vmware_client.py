@@ -44,8 +44,7 @@ class VMwareClient:
         try:
             ssl_context = None
             if not self.ssl_verify:
-                ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-                ssl_context.verify_mode = ssl.CERT_NONE
+                ssl_context = ssl._create_unverified_context()
 
             self.si = SmartConnect(
                 host=self.host,
