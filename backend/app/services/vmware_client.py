@@ -516,33 +516,27 @@ class VMwareClient:
             if not event_manager:
                 return []
 
-            # 获取最近的事件
+            # 兼容新版 pyVmomi：用 CreateCollectorForEvents
             event_filter = vim.event.EventFilterSpec()
-            event_filter.disableFullMessage = False
-
             collector = event_manager.CreateCollectorForEvents(event_filter)
-            collector.SetPageSize(max_count)
+            event_list = collector.latestPage
 
-            try:
-                event_list = collector.latestPage
-                for event in event_list:
-                    try:
-                        events.append({
-                            "event_id": self._safe_attr(event, "key"),
-                            "event_type": event.__class__.__name__,
-                            "message": self._safe_attr(event, "fullFormattedMessage", "") or self._safe_attr(event, "message", ""),
-                            "created_time": self._safe_attr(event, "createdTime"),
-                            "user_name": self._safe_attr(event, "userName", ""),
-                            "datacenter_name": self._safe_attr(self._safe_attr(event, "datacenter", "name"), "name", ""),
-                            "compute_resource_name": self._safe_attr(self._safe_attr(event, "computeResource", "name"), "name", ""),
-                            "host_name": self._safe_attr(self._safe_attr(event, "host", "name"), "name", ""),
-                            "vm_name": self._safe_attr(self._safe_attr(event, "vm", "name"), "name", ""),
-                            "severity": self._map_event_severity(event),
-                        })
-                    except Exception:
-                        pass
-            finally:
-                collector.Destroy()
+            for event in (event_list or [])[:max_count]:
+                try:
+                    events.append({
+                        "event_id": self._safe_attr(event, "key"),
+                        "event_type": event.__class__.__name__,
+                        "message": self._safe_attr(event, "fullFormattedMessage", "") or self._safe_attr(event, "message", ""),
+                        "created_time": self._safe_attr(event, "createdTime"),
+                        "user_name": self._safe_attr(event, "userName", ""),
+                        "datacenter_name": self._safe_attr(self._safe_attr(event, "datacenter", "name"), "name", ""),
+                        "compute_resource_name": self._safe_attr(self._safe_attr(event, "computeResource", "name"), "name", ""),
+                        "host_name": self._safe_attr(self._safe_attr(event, "host", "name"), "name", ""),
+                        "vm_name": self._safe_attr(self._safe_attr(event, "vm", "name"), "name", ""),
+                        "severity": self._map_event_severity(event),
+                    })
+                except Exception:
+                    pass
         except Exception as e:
             self._record_collection_error("events", "manager", e)
 
@@ -557,11 +551,9 @@ class VMwareClient:
         try:
             event_manager = self.content.eventManager
 
-            # 创建过滤条件
             event_filter = vim.event.EventFilterSpec()
             event_filter.disableFullMessage = False
 
-            # 按主机过滤
             if host_name:
                 host_filter = vim.event.EventFilterSpecByEntity()
                 # 查找主机
@@ -576,22 +568,16 @@ class VMwareClient:
                 host_view.Destroy()
                 event_filter.entity = host_filter
 
-            collector = event_manager.CreateCollectorForEvents(event_filter)
-            collector.SetPageSize(max_count)
-
-            try:
-                event_list = collector.latestPage
-                for event in event_list:
-                    events.append({
-                        "event_id": self._safe_attr(event, "key"),
-                        "event_type": event.__class__.__name__,
-                        "message": self._safe_attr(event, "fullFormattedMessage", "") or self._safe_attr(event, "message", ""),
-                        "created_time": self._safe_attr(event, "createdTime"),
-                        "user_name": self._safe_attr(event, "userName", ""),
-                        "severity": self._map_event_severity(event),
-                    })
-            finally:
-                collector.Destroy()
+            event_list = event_manager.QueryEvents(event_filter)
+            for event in (event_list or [])[:max_count]:
+                events.append({
+                    "event_id": self._safe_attr(event, "key"),
+                    "event_type": event.__class__.__name__,
+                    "message": self._safe_attr(event, "fullFormattedMessage", "") or self._safe_attr(event, "message", ""),
+                    "created_time": self._safe_attr(event, "createdTime"),
+                    "user_name": self._safe_attr(event, "userName", ""),
+                    "severity": self._map_event_severity(event),
+                })
         except Exception as e:
             self._record_collection_error("host_events", host_name or "all", e)
 
@@ -609,12 +595,18 @@ class VMwareClient:
                 return []
 
             # 获取最近的任务
-            collector = task_manager.CreateCollectorForTasks()
-            collector.SetPageSize(max_count)
-
             try:
-                task_info_list = collector.latestPage
-                for task in task_info_list:
+                filter_spec = vim.TaskFilterSpec()
+                task_list = task_manager.QueryTasks(filter_spec)
+            except Exception:
+                # Fallback: try collector approach
+                try:
+                    collector = task_manager.CreateCollectorForTasks()
+                    task_list = collector.latestPage
+                except Exception:
+                    return []
+
+            for task in (task_list or [])[:max_count]:
                     try:
                         tasks.append({
                             "task_id": self._safe_attr(task, "key"),
@@ -630,8 +622,6 @@ class VMwareClient:
                         })
                     except Exception:
                         pass
-            finally:
-                collector.Destroy()
         except Exception as e:
             self._record_collection_error("tasks", "history", e)
 
@@ -743,7 +733,37 @@ class VMwareClient:
 
     # ==================== ESXi 主机日志采集 ====================
 
-    # Event type → (category, service) mapping
+    # ESXi syslog services to collect
+    _ESXI_LOG_SERVICES = {
+        "hostd": {"category": "system", "description": "ESXi 主机管理服务"},
+        "vpxa": {"category": "system", "description": "vCenter 代理服务"},
+        "vmkernel": {"category": "virtualization", "description": "虚拟化内核日志"},
+        "vmkwarning": {"category": "virtualization", "description": "内核警告日志"},
+        "vmksummary": {"category": "virtualization", "description": "内核摘要日志"},
+        "sshd": {"category": "ssh", "description": "SSH 服务日志"},
+        "shell": {"category": "ssh", "description": "Shell 操作日志"},
+        "storageRM": {"category": "storage", "description": "存储资源管理"},
+        "fdm": {"category": "system", "description": "HA 故障检测"},
+        "rhttpproxy": {"category": "network", "description": "HTTP 代理服务"},
+    }
+
+    def get_esxi_host_logs(self, max_count: int = 200) -> List[Dict[str, Any]]:
+        """Collect ESXi host logs from vCenter events, categorized by service."""
+        if not self._connected or not self.content:
+            return []
+
+        logs = []
+        try:
+            event_manager = self.content.eventManager
+            if not event_manager:
+                return []
+
+            # 兼容新版 pyVmomi：用 CreateCollectorForEvents 获取事件
+            event_filter = vim.event.EventFilterSpec()
+            collector = event_manager.CreateCollectorForEvents(event_filter)
+            event_list = collector.latestPage
+
+            for event in (event_list or [])[:max_count]:
     _EVENT_CLASSIFICATION = {
         # System
         "HostConnectionLostEvent": ("system", "hostd"),
@@ -794,14 +814,13 @@ class VMwareClient:
             if not event_manager:
                 return []
 
+            # 兼容新版 pyVmomi：用 CreateCollectorForEvents 获取事件
+            # 不调用 SetPageSize（会导致 ContentLibrary 错误）
             event_filter = vim.event.EventFilterSpec()
-            event_filter.disableFullMessage = False
             collector = event_manager.CreateCollectorForEvents(event_filter)
-            collector.SetPageSize(max_count)
+            event_list = collector.latestPage
 
-            try:
-                event_list = collector.latestPage
-                for event in event_list:
+            for event in (event_list or [])[:max_count]:
                     event_type = event.__class__.__name__
                     category, service = self._EVENT_CLASSIFICATION.get(event_type, ("system", "unknown"))
                     severity = self._map_event_severity(event)
@@ -822,8 +841,6 @@ class VMwareClient:
                         "datacenter": self._safe_attr(self._safe_attr(event, "datacenter", "name"), "name", "") or "",
                         "cluster": self._safe_attr(self._safe_attr(event, "computeResource", "name"), "name", "") or "",
                     })
-            finally:
-                collector.Destroy()
 
         except Exception as e:
             self._record_collection_error("esxi_logs", "all", e)
