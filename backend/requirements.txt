@@ -14,6 +14,9 @@ psycopg2-binary>=2.9.0
 # VMware vCenter SDK
 pyvmomi>=7.0.3
 
+# SSH for ESXi log collection
+paramiko>=3.0.0
+
 # Encryption
 pycryptodome>=3.19.0
 

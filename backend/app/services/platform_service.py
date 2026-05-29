@@ -402,7 +402,29 @@ def _collect_vmware_snapshot(instance: PlatformInstance, thresholds: Dict[str, D
         naming_issues = _build_naming_issue_rows("vmware", "VMware vCenter", vms, check_time)
         idle_vms = _build_idle_vm_rows("vmware", "VMware vCenter", vms, check_time)
         triggered_alarms = _build_triggered_alarm_rows("vmware", "VMware vCenter", client.get_triggered_alarms(), check_time)
-        esxi_logs = client.get_esxi_host_logs(max_count=300)
+
+        # Collect ESXi host logs via SSH (direct connection to each ESXi host)
+        esxi_logs = []
+        for host in hosts:
+            host_ip = host.get("ip_address", "")
+            if not host_ip:
+                continue
+            try:
+                from app.services.esxi_log_collector import collect_esxi_logs_via_ssh
+                host_logs = collect_esxi_logs_via_ssh(
+                    host_ip=host_ip,
+                    username=instance.api_username or "root",
+                    password=password,
+                    port=22,
+                    hours=24,
+                    max_lines_per_file=100,
+                )
+                for log in host_logs:
+                    log["host_name"] = host_ip
+                esxi_logs.extend(host_logs)
+            except Exception:
+                pass  # Skip hosts that can't be reached via SSH
+
         alerts = _build_alert_rows("vmware", "VMware vCenter", hosts, expired_snapshots, large_vms, naming_issues, idle_vms, thresholds, instance.api_url, check_time)
         statistics = _build_platform_statistics(hosts, vms, clusters, expired_snapshots, large_vms)
         capabilities = {"cluster_status": True, "hosts": True, "vms": True, "snapshots": True, "annotations": True, "idle_assets": True, "large_vms": True, "history": True, "auth_verified": True}
