@@ -445,3 +445,102 @@ async def clear_instance(instance_id: int):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
+
+
+# ──────────────────────────────────────────────
+# ESXi Host Credential overrides
+# ──────────────────────────────────────────────
+
+class EsxiHostCredConfig(BaseModel):
+    host_ip: str
+    ssh_username: str = "root"
+    ssh_password: Optional[str] = None
+    ssh_port: int = 22
+
+
+@router.get("/{instance_id}/esxi-hosts")
+async def get_esxi_host_credentials(instance_id: int):
+    """Get per-ESXi-host credential overrides for a vCenter instance"""
+    from app.database import EsxiHostCredential
+    db = SessionLocal()
+    try:
+        creds = db.query(EsxiHostCredential).filter(
+            EsxiHostCredential.instance_id == instance_id
+        ).all()
+        return {
+            "total": len(creds),
+            "credentials": [
+                {
+                    "id": c.id,
+                    "host_ip": c.host_ip,
+                    "ssh_username": c.ssh_username,
+                    "ssh_port": c.ssh_port,
+                    "is_active": c.is_active,
+                    "last_error": c.last_error or "",
+                    "last_test_at": c.last_test_at.isoformat() if c.last_test_at else None,
+                }
+                for c in creds
+            ],
+        }
+    finally:
+        db.close()
+
+
+@router.post("/{instance_id}/esxi-hosts")
+async def add_esxi_host_credential(instance_id: int, config: EsxiHostCredConfig):
+    """Add or update per-ESXi-host SSH credential"""
+    from app.database import EsxiHostCredential
+    db = SessionLocal()
+    try:
+        existing = db.query(EsxiHostCredential).filter(
+            EsxiHostCredential.instance_id == instance_id,
+            EsxiHostCredential.host_ip == config.host_ip,
+        ).first()
+
+        if existing:
+            existing.ssh_username = config.ssh_username
+            if config.ssh_password:
+                existing.ssh_password = encrypt_password(config.ssh_password)
+            existing.ssh_port = config.ssh_port
+            existing.updated_at = datetime.now()
+        else:
+            cred = EsxiHostCredential(
+                instance_id=instance_id,
+                host_ip=config.host_ip,
+                ssh_username=config.ssh_username,
+                ssh_password=encrypt_password(config.ssh_password) if config.ssh_password else None,
+                ssh_port=config.ssh_port,
+            )
+            db.add(cred)
+
+        db.commit()
+        return {"success": True, "message": f"ESXi主机 {config.host_ip} 凭证已保存"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+
+@router.delete("/{instance_id}/esxi-hosts/{cred_id}")
+async def delete_esxi_host_credential(instance_id: int, cred_id: int):
+    """Delete per-ESXi-host SSH credential"""
+    from app.database import EsxiHostCredential
+    db = SessionLocal()
+    try:
+        cred = db.query(EsxiHostCredential).filter(
+            EsxiHostCredential.id == cred_id,
+            EsxiHostCredential.instance_id == instance_id,
+        ).first()
+        if not cred:
+            raise HTTPException(status_code=404, detail="凭证不存在")
+        db.delete(cred)
+        db.commit()
+        return {"success": True, "message": f"ESXi主机 {cred.host_ip} 凭证已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()

@@ -1771,8 +1771,30 @@ class VmMetadataOverride(Base):
 # ESXi Host Logs
 # ──────────────────────────────────────────────
 
+class EsxiHostCredential(Base):
+    """Per-ESXi-host SSH credential overrides"""
+    __tablename__ = "esxi_host_credential"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    instance_id = Column(BigInteger, ForeignKey("plt_instance.id"), nullable=False)
+    host_ip = Column(String(50), nullable=False)
+    ssh_username = Column(String(100), default="root")
+    ssh_password = Column(String(500))  # encrypted
+    ssh_port = Column(Integer, default=22)
+    is_active = Column(Boolean, default=True)
+    last_error = Column(Text)
+    last_test_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=text("NOW()"))
+    updated_at = Column(DateTime(timezone=True), server_default=text("NOW()"), onupdate=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("instance_id", "host_ip", name="uq_esxi_host_cred"),
+        Index("idx_esxi_cred_instance", "instance_id"),
+    )
+
+
 class EsxiHostLog(Base):
-    """ESXi host logs collected from vCenter events"""
+    """ESXi host logs collected via SSH"""
     __tablename__ = "esxi_host_log"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -1786,9 +1808,7 @@ class EsxiHostLog(Base):
 
     # Content
     message = Column(Text)
-    event_type = Column(String(100))
-    event_id = Column(String(100))
-    user_name = Column(String(100))
+    log_file = Column(String(200))                       # source log file path
 
     # Time
     event_time = Column(DateTime(timezone=True))

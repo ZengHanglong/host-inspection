@@ -403,36 +403,48 @@ def _collect_vmware_snapshot(instance: PlatformInstance, thresholds: Dict[str, D
         idle_vms = _build_idle_vm_rows("vmware", "VMware vCenter", vms, check_time)
         triggered_alarms = _build_triggered_alarm_rows("vmware", "VMware vCenter", client.get_triggered_alarms(), check_time)
 
-        # Collect ESXi host logs via SSH (direct connection to each ESXi host)
-        esxi_logs = []
+        # Collect ESXi host logs via SSH (concurrent, per-host credentials)
+        from app.database import EsxiHostCredential
+        from app.services.esxi_log_collector import collect_all_esxi_logs
+
         esxi_user = instance.esxi_ssh_username or "root"
-        esxi_pass = instance.esxi_ssh_password or ""
+        esxi_pass_enc = instance.esxi_ssh_password or ""
         esxi_port = instance.esxi_ssh_port or 22
-        if esxi_pass:
+        if esxi_pass_enc:
             from app.utils.encryption import decrypt_password
-            esxi_pass = decrypt_password(esxi_pass)
+            esxi_pass = decrypt_password(esxi_pass_enc)
         else:
             esxi_pass = password  # fallback to vCenter password
 
-        for host in hosts:
-            host_ip = host.get("ip_address", "")
-            if not host_ip:
-                continue
-            try:
-                from app.services.esxi_log_collector import collect_esxi_logs_via_ssh
-                host_logs = collect_esxi_logs_via_ssh(
-                    host_ip=host_ip,
-                    username=esxi_user,
-                    password=esxi_pass,
-                    port=esxi_port,
-                    hours=24,
-                    max_lines_per_file=100,
-                )
-                for log in host_logs:
-                    log["host_name"] = host_ip
-                esxi_logs.extend(host_logs)
-            except Exception:
-                pass  # Skip hosts that can't be reached via SSH
+        # Load per-host credential overrides
+        host_creds = {}
+        overrides = db.query(EsxiHostCredential).filter(
+            EsxiHostCredential.instance_id == instance.id,
+            EsxiHostCredential.is_active == True,
+        ).all()
+        for ov in overrides:
+            host_creds[ov.host_ip] = {
+                "username": ov.ssh_username or esxi_user,
+                "password": decrypt_password(ov.ssh_password) if ov.ssh_password else esxi_pass,
+                "port": ov.ssh_port or esxi_port,
+            }
+
+        log_result = collect_all_esxi_logs(
+            hosts=hosts,
+            default_username=esxi_user,
+            default_password=esxi_pass,
+            default_port=esxi_port,
+            hours=24,
+            max_lines_per_file=100,
+            per_host_credentials=host_creds,
+            max_workers=5,
+        )
+        esxi_logs = log_result["logs"]
+
+        # Store collection errors for reporting
+        if log_result["errors"]:
+            for host_ip, err_msg in log_result["errors"].items():
+                collection_errors.append(f"esxi_log:{host_ip}: {err_msg}")
 
         alerts = _build_alert_rows("vmware", "VMware vCenter", hosts, expired_snapshots, large_vms, naming_issues, idle_vms, thresholds, instance.api_url, check_time)
         statistics = _build_platform_statistics(hosts, vms, clusters, expired_snapshots, large_vms)
@@ -1262,9 +1274,7 @@ def persist_host_records(db, snapshots: Iterable[Dict[str, Any]], check_time: Op
                 service=log.get("service", "unknown"),
                 severity=log.get("severity", "info"),
                 message=log.get("message", ""),
-                event_type=log.get("event_type", ""),
-                event_id=log.get("event_id", ""),
-                user_name=log.get("user_name", ""),
+                log_file=log.get("log_file", ""),
                 event_time=event_time,
             ))
 

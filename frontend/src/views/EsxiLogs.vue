@@ -10,7 +10,7 @@
           </svg>
           <h1 class="page-title">ESXi 主机日志</h1>
         </div>
-        <p class="page-subtitle">vCenter 事件日志采集与分类</p>
+        <p class="page-subtitle">ESXi 主机系统日志 SSH 直连采集与分类</p>
       </div>
     </div>
 
@@ -106,9 +106,9 @@
                 <th style="width:80px">级别</th>
                 <th style="width:80px">分类</th>
                 <th style="width:100px">服务</th>
-                <th style="width:140px">主机</th>
+                <th style="width:130px">主机</th>
                 <th>消息</th>
-                <th style="width:100px">操作人</th>
+                <th style="width:140px">来源文件</th>
                 <th style="width:150px">时间</th>
               </tr>
             </thead>
@@ -118,8 +118,8 @@
                 <td><span class="category-tag">{{ categoryName(log.category) }}</span></td>
                 <td class="service-cell">{{ log.service }}</td>
                 <td class="host-cell">{{ log.host_name || '--' }}</td>
-                <td class="message-cell">{{ log.message || log.event_type }}</td>
-                <td class="user-cell">{{ log.user_name || '--' }}</td>
+                <td class="message-cell">{{ log.message }}</td>
+                <td class="file-cell">{{ log.log_file || '--' }}</td>
                 <td class="time-cell">{{ formatTime(log.event_time) }}</td>
               </tr>
             </tbody>
@@ -258,7 +258,7 @@ onMounted(() => loadLogs(24))
 .service-cell { font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.6); }
 .host-cell { font-weight: 500; }
 .message-cell { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-cell { color: rgba(255,255,255,0.5); }
+.file-cell { font-family: monospace; font-size: 11px; color: rgba(255,255,255,0.4); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .time-cell { font-size: 12px; color: rgba(255,255,255,0.4); white-space: nowrap; }
 
 .empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px 20px; }

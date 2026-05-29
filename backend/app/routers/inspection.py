@@ -131,27 +131,39 @@ async def get_esxi_logs(
                 "service": r.service,
                 "severity": r.severity,
                 "message": r.message,
-                "event_type": r.event_type,
-                "user_name": r.user_name,
+                "log_file": r.log_file or "",
                 "event_time": r.event_time.isoformat() if r.event_time else None,
             }
             for r in rows
         ]
 
-        # Summary counts
-        base_query = db.query(EsxiHostLog).filter(EsxiHostLog.event_time >= since)
-        total = base_query.count()
-        by_severity = {}
-        for sev in ["info", "warning", "error", "critical"]:
-            by_severity[sev] = base_query.filter(EsxiHostLog.severity == sev).count()
-        by_category = {}
-        for row in base_query.with_entities(EsxiHostLog.category, db.query(EsxiHostLog).filter(EsxiHostLog.event_time >= since).subquery().c.category).distinct():
-            pass  # simplified below
+        # Summary counts using single query
+        from sqlalchemy import func
+        severity_counts = dict(
+            db.query(EsxiHostLog.severity, func.count(EsxiHostLog.id))
+            .filter(EsxiHostLog.event_time >= since)
+            .group_by(EsxiHostLog.severity)
+            .all()
+        )
+
+        # Unique hosts
+        host_list = [
+            r[0] for r in db.query(EsxiHostLog.host_name)
+            .filter(EsxiHostLog.event_time >= since)
+            .distinct()
+            .all()
+        ]
 
         return {
-            "total": total,
+            "total": len(logs),
             "hours": hours,
-            "by_severity": by_severity,
+            "by_severity": {
+                "info": severity_counts.get("info", 0),
+                "warning": severity_counts.get("warning", 0),
+                "error": severity_counts.get("error", 0),
+                "critical": severity_counts.get("critical", 0),
+            },
+            "hosts": sorted(host_list),
             "data": logs,
         }
     finally:
