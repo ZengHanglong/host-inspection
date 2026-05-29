@@ -747,23 +747,7 @@ class VMwareClient:
         "rhttpproxy": {"category": "network", "description": "HTTP 代理服务"},
     }
 
-    def get_esxi_host_logs(self, max_count: int = 200) -> List[Dict[str, Any]]:
-        """Collect ESXi host logs from vCenter events, categorized by service."""
-        if not self._connected or not self.content:
-            return []
-
-        logs = []
-        try:
-            event_manager = self.content.eventManager
-            if not event_manager:
-                return []
-
-            # 兼容新版 pyVmomi：用 CreateCollectorForEvents 获取事件
-            event_filter = vim.event.EventFilterSpec()
-            collector = event_manager.CreateCollectorForEvents(event_filter)
-            event_list = collector.latestPage
-
-            for event in (event_list or [])[:max_count]:
+    # Event type → (category, service) mapping
     _EVENT_CLASSIFICATION = {
         # System
         "HostConnectionLostEvent": ("system", "hostd"),
@@ -802,6 +786,52 @@ class VMwareClient:
         "UserLogoutSessionEvent": ("ssh", "shell"),
         "BadUsernameSessionEvent": ("ssh", "shell"),
     }
+
+    def get_esxi_host_logs(self, max_count: int = 200) -> List[Dict[str, Any]]:
+        """Collect ESXi host logs from vCenter events, categorized by service."""
+        if not self._connected or not self.content:
+            return []
+
+        logs = []
+        try:
+            event_manager = self.content.eventManager
+            if not event_manager:
+                return []
+
+            # 兼容新版 pyVmomi：用 CreateCollectorForEvents 获取事件
+            event_filter = vim.event.EventFilterSpec()
+            collector = event_manager.CreateCollectorForEvents(event_filter)
+            event_list = collector.latestPage
+
+            for event in (event_list or [])[:max_count]:
+                try:
+                    event_type = event.__class__.__name__
+                    category, service = self._EVENT_CLASSIFICATION.get(event_type, ("system", "unknown"))
+                    severity = self._map_event_severity(event)
+                    host_name = self._safe_attr(self._safe_attr(event, "host", "name"), "name", "") or ""
+                    vm_name = self._safe_attr(self._safe_attr(event, "vm", "name"), "name", "") or ""
+
+                    logs.append({
+                        "host_name": host_name,
+                        "vm_name": vm_name,
+                        "category": category,
+                        "service": service,
+                        "severity": severity,
+                        "event_type": event_type,
+                        "event_id": self._safe_attr(event, "key", ""),
+                        "message": self._safe_attr(event, "fullFormattedMessage", "") or self._safe_attr(event, "message", "") or "",
+                        "user_name": self._safe_attr(event, "userName", "") or "",
+                        "event_time": self._safe_attr(event, "createdTime"),
+                        "datacenter": self._safe_attr(self._safe_attr(event, "datacenter", "name"), "name", "") or "",
+                        "cluster": self._safe_attr(self._safe_attr(event, "computeResource", "name"), "name", "") or "",
+                    })
+                except Exception:
+                    pass
+
+        except Exception as e:
+            self._record_collection_error("esxi_logs", "all", e)
+
+        return logs
 
     def get_esxi_host_logs(self, max_count: int = 200) -> List[Dict[str, Any]]:
         """Collect ESXi host logs from vCenter events, categorized by service."""
